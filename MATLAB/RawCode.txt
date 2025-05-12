@@ -1,0 +1,891 @@
+classdef Project < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        UIFigure                      matlab.ui.Figure
+        TabGroup                      matlab.ui.container.TabGroup
+        SolarCellViewTab_2            matlab.ui.container.Tab
+        JunctionBoxCheckBox           matlab.ui.control.CheckBox
+        FrameVisibilityCheckBox       matlab.ui.control.CheckBox
+        LoadButton                    matlab.ui.control.Button
+        SaveButton                    matlab.ui.control.Button
+        ViewSelectionDropDown         matlab.ui.control.DropDown
+        ViewSelectionDropDownLabel    matlab.ui.control.Label
+        Image                         matlab.ui.control.Image
+        ParametersinSIunitsPanel      matlab.ui.container.Panel
+        CellWidthEditField            matlab.ui.control.NumericEditField
+        CellWidthEditFieldLabel       matlab.ui.control.Label
+        CellHeightEditField           matlab.ui.control.NumericEditField
+        CellHeightEditFieldLabel      matlab.ui.control.Label
+        GHIEditField                  matlab.ui.control.NumericEditField
+        GHIEditFieldLabel             matlab.ui.control.Label
+        FrameThicknessEditField       matlab.ui.control.NumericEditField
+        FrameThicknessEditFieldLabel  matlab.ui.control.Label
+        CellSpacingEditField          matlab.ui.control.NumericEditField
+        CellSpacingEditFieldLabel     matlab.ui.control.Label
+        GlassThicknessRearEditField   matlab.ui.control.NumericEditField
+        GlassThicknessRearEditFieldLabel  matlab.ui.control.Label
+        EncapsulantThicknessFrontEditField  matlab.ui.control.NumericEditField
+        EncapsulantThicknessFrontEditFieldLabel  matlab.ui.control.Label
+        EncapsulantThicknessRearEditField  matlab.ui.control.NumericEditField
+        EncapsulantThicknessRearEditFieldLabel  matlab.ui.control.Label
+        GlassThicknessFrontEditField  matlab.ui.control.NumericEditField
+        GlassThicknessFrontEditFieldLabel  matlab.ui.control.Label
+        NoofColumnsEditField          matlab.ui.control.NumericEditField
+        NoofColumnsEditFieldLabel     matlab.ui.control.Label
+        NoofrowsEditField             matlab.ui.control.NumericEditField
+        NoofrowsEditFieldLabel        matlab.ui.control.Label
+        WidthEditField                matlab.ui.control.NumericEditField
+        WidthEditFieldLabel           matlab.ui.control.Label
+        HeightEditField               matlab.ui.control.NumericEditField
+        HeightEditFieldLabel          matlab.ui.control.Label
+        UIAxes                        matlab.ui.control.UIAxes
+        PowerCalculationTab           matlab.ui.container.Tab
+        CalculatePowerButton          matlab.ui.control.Button
+        Image2                        matlab.ui.control.Image
+        EditField                     matlab.ui.control.NumericEditField
+        ParametersPanel_2             matlab.ui.container.Panel
+        CellWidthEditField_2          matlab.ui.control.NumericEditField
+        CellWidthEditField_2Label     matlab.ui.control.Label
+        CellHeightEditField_2         matlab.ui.control.NumericEditField
+        CellHeightEditField_2Label    matlab.ui.control.Label
+        EfficiencyEditField           matlab.ui.control.NumericEditField
+        EfficiencyEditFieldLabel      matlab.ui.control.Label
+        GHIEditField_2                matlab.ui.control.NumericEditField
+        GHIEditField_2Label           matlab.ui.control.Label
+        NoofColumnsEditField_2        matlab.ui.control.NumericEditField
+        NoofColumnsEditField_2Label   matlab.ui.control.Label
+        NoofrowsEditField_2           matlab.ui.control.NumericEditField
+        NoofrowsEditField_2Label      matlab.ui.control.Label
+    end
+
+    
+    properties (Access = private)
+        Width  double    % module width in meters
+        Height  double    % module height in meters
+        GlassThicknessFront   double    % front glass thickness
+        GlassThicknessRear double    % rear glass thickness
+        EncapsulantThicknessFront double    % front encapsulant thickness
+        EncapsulantThicknessRear  double    % rear encapsulant thickness
+        Noofrows   double    % number of cell rows
+        NoofColumns  double    % number of cell columns
+        CellSpacing  double    % spacing between cells
+        FrameThickness  double    % frame cross-section thickness
+        ViewAzEl (1,2) double = [45, 30]
+        CellWidth double    
+        CellHeight double
+        cellColor double
+        ghi double
+        efficiency double
+    end
+    
+    methods (Access = private)
+        
+    function drawModule(app)
+    % Clear and prepare axes
+    cla(app.UIAxes);
+    hold(app.UIAxes, 'on');
+    axis(app.UIAxes, 'equal');
+    axis(app.UIAxes, 'vis3d');   % Preserves 3D aspect ratio
+    grid(app.UIAxes, 'off');
+
+    % Unpack parameters
+    W  = app.Width;
+    H  = app.Height;
+    gf = app.GlassThicknessFront;
+    gr = app.GlassThicknessRear;
+    ef = app.EncapsulantThicknessFront;
+    er = app.EncapsulantThicknessRear;
+    cs = app.CellSpacing;
+    frameThick = app.FrameThickness;
+
+    cw = app.CellWidth;
+    ch = app.CellHeight;
+    nc = app.NoofColumns;
+    nr = app.Noofrows;
+
+   % Fetch irradiance
+   ghi = app.GHIEditField.Value;
+
+   % Map irradiance to cell color
+  if isnan(ghi)
+    app.cellColor = [0.5, 0.5, 0.5]; % fallback gray
+  else
+    app.cellColor = mapGHItoColor(app, ghi);
+  end
+  % Set view
+  az = app.ViewAzEl(1);
+  el = app.ViewAzEl(2);
+  view(app.UIAxes, az, el);
+  app.UIAxes.Projection = 'orthographic';  
+  xlim(app.UIAxes, [0 W]);              
+  ylim(app.UIAxes, [0 H]);
+
+  % Check how many cells fit
+  maxCols = floor((W - cs) / (cw + cs));
+  maxRows = floor((H - cs) / (ch + cs));
+  if maxCols < nc || maxRows < nr
+     uialert(app.UIFigure, sprintf('Not all %dx%d cells will fit; drawing only %dx%d.', app.Noofrows, app.NoofColumns, maxRows, maxCols), 'Cell Layout Warning');
+  end
+    nc = min(nc, maxCols);
+    nr = min(nr, maxRows);
+    app.NoofColumns = nc;
+    app.Noofrows = nr;
+    updateUIFields(app);
+
+  % Helper for drawing rectangular prism
+    function drawBlock(x0, y0, z0, dx, dy, dz, faceColor, alphaVal)
+        X = [0 1 1 0 0 1 1 0]*dx + x0;
+        Y = [0 0 1 1 0 0 1 1]*dy + y0;
+        Z = [0 0 0 0 1 1 1 1]*dz + z0;
+        faces = [1 2 3 4; 5 6 7 8; 1 2 6 5; 2 3 7 6; 3 4 8 7; 4 1 5 8];
+        patch(app.UIAxes, 'Vertices', [X', Y', Z'], ...
+              'Faces', faces, ...
+              'FaceColor', faceColor, ...
+              'FaceAlpha', alphaVal, ...
+              'EdgeColor', 'none');
+    end
+
+   % 1) Front glass
+   drawBlock(0, 0, ef+er, W, H, gf, [0.8, 0.9, 1], 0.6);  % slightly more opaque
+
+   % 2) Front encapsulant
+   drawBlock(0, 0, er, W, H, ef, [1, 1, 1], 0.4);         % more visible
+
+   % 3) Cells
+   isTopView = isequal([az, el], [0, 90]);
+   zCell = er + ef + 1e-3;  % small Z offset
+   totalCellWidth  = nc * cw + (nc - 1) * cs;
+   totalCellHeight = nr * ch + (nr - 1) * cs;
+   xOffset = (W - totalCellWidth) / 2;
+   yOffset = (H - totalCellHeight) / 2;
+   if isTopView
+      % === Use 2D rectangle() for clean top view ===
+    for i = 1:nr
+        y0 = yOffset + (i - 1) * (ch + cs);
+        for j = 1:nc
+            x0 = xOffset + (j - 1) * (cw + cs);
+            rectangle(app.UIAxes, ...
+                'Position', [x0, y0, cw, ch], ...
+                'FaceColor', app.cellColor, ...
+                'EdgeColor', [0.6, 0.6, 0.6], ...
+                'LineWidth', 0.5);
+        end
+    end
+else
+    % === Use 3D patch() blocks in isometric or side view ===
+    for i = 1:nr
+        y0 = yOffset + (i - 1) * (ch + cs);
+        for j = 1:nc
+            x0 = xOffset + (j - 1) * (cw + cs);
+            drawBlock(x0, y0, zCell, cw, ch, 0.004, app.cellColor, 1.0);
+        end
+    end
+end
+
+  % 4) Rear encapsulant
+  drawBlock(0, 0, 0, W, H, er, [1, 1, 1], 0.4);
+
+  % 5) Rear glass
+  drawBlock(0, 0, -gr, W, H, gr, [0.8, 0.9, 1], 0.6);
+
+  % 6) Frame
+   if app.FrameVisibilityCheckBox.Value
+    % Frame profile: 3 layers of aluminum (bottom, mid, top)
+    zLevels = [-gr, ef + er + 0.004/2, ef + er + gf];  % bottom, middle, top
+    
+    for i = 1:length(zLevels)
+        z0 = zLevels(i);
+        % Bottom strip
+        drawBlock(0, 0, z0, W, frameThick, frameThick, [0.6, 0.6, 0.6], 1);
+        % Top strip
+        drawBlock(0, H - frameThick, z0, W, frameThick, frameThick, [0.6, 0.6, 0.6], 1);
+        % Left strip
+        drawBlock(0, 0, z0, frameThick, H, frameThick, [0.6, 0.6, 0.6], 1);
+        % Right strip
+        drawBlock(W - frameThick, 0, z0, frameThick, H, frameThick, [0.6, 0.6, 0.6], 1);
+    end
+   end
+  % 7)Junction box
+   if app.JunctionBoxCheckBox.Value
+     boxW = 0.1 * W;   % 10% width
+     boxH = 0.06 * H;  % 6% height
+     boxD = 0.015;     % 1.5 cm deep
+     xJB = (W - boxW) / 2;
+     yJB = 0.1 * H;
+     zJB = -gr - boxD;
+     drawBlock(xJB, yJB, zJB, boxW, boxH, boxD, [0.2, 0.2, 0.2], 1.0);  % rear box
+
+      text(app.UIAxes, xJB + boxW/2, yJB + boxH/2, zJB + boxD + 0.005, ...
+      'Junction Box', 'Color', 'w', 'FontSize', 8, ...
+       'HorizontalAlignment', 'center');
+    end
+   % 8) Lighting
+   camlight(app.UIAxes, 'headlight');
+   lighting(app.UIAxes, 'gouraud');
+   hold(app.UIAxes, 'off');
+   drawnow;
+   end
+       
+        
+        function results = updateUIFields(app)
+        app.WidthEditField.Value        = app.Width;
+        app.HeightEditField.Value       = app.Height;
+        app.GlassThicknessFrontEditField.Value  = app.GlassThicknessFront;
+        app.GlassThicknessRearEditField.Value  = app.GlassThicknessRear;
+        app.EncapsulantThicknessFrontEditField.Value  = app.EncapsulantThicknessFront;
+        app.EncapsulantThicknessRearEditField.Value  = app.EncapsulantThicknessRear;
+        app.NoofrowsEditField.Value  = app.Noofrows;
+        app.NoofColumnsEditField.Value   = app.NoofColumns;
+        app.CellSpacingEditField.Value   = app.CellSpacing;
+        app.FrameThicknessEditField.Value   = app.FrameThickness;
+        app.GHIEditField.Value = app.ghi;
+        app.GHIEditField_2.Value = app.ghi;
+        app.CellHeightEditField_2.Value = app.CellHeight;
+        app.CellWidthEditField_2.Value = app.CellWidth;
+        app.NoofColumnsEditField_2.Value = app.NoofColumns;
+        app.NoofrowsEditField_2.Value = app.Noofrows;
+        app.EfficiencyEditField.Value = app.efficiency
+        app.CellHeightEditField.Value = app.CellHeight;
+        app.CellWidthEditField.Value = app.CellWidth;
+        % Update view dropdown to reflect current ViewAzEl
+        if isequal(app.ViewAzEl, [0, 90])
+            app.ViewSelectionDropDown.Value = 'Top';
+        elseif isequal(app.ViewAzEl, [90, 0])
+            app.ViewSelectionDropDown.Value = 'Side';
+        else
+            app.ViewSelectionDropDown.Value = 'Isometric';
+        end
+        end
+        
+        function color = mapGHItoColor(app, ghi)
+        % Map GHI to color gradient from blue (low) to red (high)
+        minGHI = 0;
+        maxGHI = 1000;  % Typical clear-sky maximum
+        norm = max(0, min(1, (ghi - minGHI) / (maxGHI - minGHI)));
+        color = [norm, 0.2, 1 - norm];  % Red to blue
+            
+        end
+        % Tried to implement code to get irradiance from lat and log but
+        % api not working
+        function ghi = fetchGHIFromNASA(app, lat, lon)
+          try
+        url = sprintf(['https://power.larc.nasa.gov/api/temporal/daily/point?', ...
+            'parameters=ALLSKY_SFC_SW_DWN&community=RE&longitude=%.4f&latitude=%.4f&format=JSON'], lon, lat);
+        options = weboptions("Timeout", 15);
+        data = webread(url, options);
+        fields = data.properties.parameter.ALLSKY_SFC_SW_DWN;
+        dateKeys = fieldnames(fields);
+        ghi = fields.(dateKeys{end});  % Get the most recent day's GHI
+    catch
+        ghi = NaN;
+        uialert(app.UIFigure, 'Failed to fetch irradiance from NASA POWER.', ...
+            'API Error', 'Icon', 'error');
+    
+    end
+            
+        end
+        
+        function P = calculatePower(app, ghi)
+         
+        eta = app.efficiency;  % Module efficiency
+        app.CellHeight = app.CellHeightEditField_2.Value;
+        app.CellWidth  = app.CellHeightEditField_2.Value;
+        A = app.CellWidth * app.CellHeight * app.Noofrows * app.NoofColumns;
+        P = ghi * A * eta/100;
+        app.EditField.Value  =  P;
+       end
+            
+
+    end
+    
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function Start(app)
+           
+        app.Width = 1.6; % meters
+        app.Height = 1;  % meters
+        app.GlassThicknessFront = 0.003; % 3 mm
+        app.GlassThicknessRear= 0.003; % 3 mm
+        app.EncapsulantThicknessFront = 0.0005;  % 0.5 mm front encapsulant
+        app.EncapsulantThicknessRear = 0.0005;  % 0.5 mm front encapsulant
+        app.Noofrows = 6; % Initial rows no 
+        app.NoofColumns = 12 ; % Initial column no 
+        app.CellSpacing = 0.003; % 3 mm gap between cells
+        app.FrameThickness = 0.03;    % 30 mm frame thickness
+        app.CellHeight = 0.156;
+        app.CellWidth = 0.156;
+        app.ghi = 500;
+        app.CellWidth = 0.156;
+        app.efficiency = 20;
+        % Initialize UI fields and draw initial module
+        app.updateUIFields();
+        app.drawModule()
+        end
+
+        % Value changed function: GlassThicknessRearEditField
+        function GlassThicknessRearEditFieldchanged(app, event)
+            app.GlassThicknessRear = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: EncapsulantThicknessFrontEditField
+        function EncapsulantThicknessFrontEditFieldchanged(app, event)
+             app.EncapsulantThicknessFront = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: EncapsulantThicknessRearEditField
+        function EncapsulantThicknessRearEditFieldchanged(app, event)
+            app.EncapsulantThicknessRear = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: GlassThicknessFrontEditField
+        function GlassThicknessFrontEditFieldchanged(app, event)
+            app.GlassThicknessFront = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: NoofColumnsEditField
+        function NoofColumnsEditFieldchanged(app, event)
+            app.NoofColumns = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: NoofrowsEditField
+        function NoofrowsEditFieldchanged(app, event)
+            app.Noofrows = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: JunctionBoxCheckBox
+        function JunctionBoxCheckBoxchanged(app, event)
+            app.Width = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: HeightEditField
+        function HeightEditFieldchanged(app, event)
+            app.Height= event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: CellSpacingEditField
+        function CellSpacingEditFieldchanged(app, event)
+            app.CellSpacing = event.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: ViewSelectionDropDown
+        function ViewSelectionDropDownchanged(app, event)
+            value = app.ViewSelectionDropDown.Value;
+    switch app.ViewSelectionDropDown.Value
+        case 'Top'
+            app.ViewAzEl = [0, 90];
+        case 'Side'
+            app.ViewAzEl = [90, 0];
+        case 'Isometric'
+            app.ViewAzEl = [45, 30];
+        case 'Bottom'
+            app.ViewAzEl = [0, -90];
+    end
+    app.drawModule();
+        end
+
+        % Button pushed function: SaveButton
+        function save(app, event)
+             % Gather current settings into a struct
+        settings = struct();
+        settings.Width         = app.Width;
+        settings.Height        = app.Height;
+        settings.GlassF        = app.GlassThicknessFront;
+        settings.GlassR        = app.GlassThicknessRear;
+        settings.EncapF        = app.EncapsulantThicknessFront;
+        settings.EncapR        = app.EncapsulantThicknessRear;
+        settings.NumRows       = app.Noofrows;
+        settings.NumCols       = app.NoofColumns;
+        settings.CellSpacing   = app.CellSpacing;
+        settings.FrameThickness= app.FrameThickness;
+        settings.ViewAzEl      = app.ViewAzEl;
+        settings.ghi           = app.ghi;
+        settings.CellHeight    =  app.CellHeight;
+        settings.CellWidth     =  app.CellWidth;
+
+        
+        % Prompt user for filename and save
+        [file, path] = uiputfile('*.mat', 'Save Module Settings');
+        if isequal(file,0) || isequal(path,0)
+            % User canceled
+            return;
+        end
+        fullFileName = fullfile(path, file);
+        try
+            save(fullFileName, 'settings');
+            uialert(app.UIFigure, 'Settings saved successfully.', 'Save Complete');
+        catch ME
+            uialert(app.UIFigure, ["Error saving settings: " ME.message], 'Save Error', 'Icon', 'error');
+        end
+        end
+
+        % Value changed function: FrameThicknessEditField
+        function FrameThicknessEditFieldchanged(app, event)
+            app.FrameThickness = event.Value;
+            app.drawModule();
+        end
+
+        % Button pushed function: LoadButton
+        function load(app, event)
+             % Prompt user to select a .mat file
+        [file, path] = uigetfile('*.mat', 'Load Module Settings');
+        if isequal(file,0) || isequal(path,0)
+            % User canceled
+            return;
+        end
+        fullFileName = fullfile(path, file);
+        try
+            S = load(fullFileName, 'settings');
+            settings = S.settings;
+            % Assign back to app properties
+            app.Width   = settings.Width;
+            app.Height    = settings.Height;
+            app.GlassThicknessFront = settings.GlassF;
+            app.GlassThicknessRear  = settings.GlassR;
+            app.EncapsulantThicknessFront = settings.EncapF;
+            app.EncapsulantThicknessRear = settings.EncapR;
+            app.Noofrows = settings.NumRows;
+            app.NoofColumns  = settings.NumCols;
+            app.CellSpacing  = settings.CellSpacing;
+            app.FrameThickness = settings.FrameThickness;
+            app.ViewAzEl        = settings.ViewAzEl;
+            app.ghi = settings.ghi;
+            app.CellHeight =  settings.CellHeight;
+            app.CellWidth =  settings.CellWidth;
+
+            
+            % Update UI fields and redraw
+            app.updateUIFields();
+            app.drawModule();
+            uialert(app.UIFigure, 'Settings loaded successfully.', 'Load Complete');
+        catch ME
+            uialert(app.UIFigure, ["Error loading settings: " ME.message], 'Load Error', 'Icon', 'error');
+        end
+        end
+
+        % Value changed function: GHIEditField
+        function GHIEditFieldchanged(app, event)
+            value = app.GHIEditField.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: FrameVisibilityCheckBox
+        function FrameVisibilityCheckBoxchanged(app, event)
+            value = app.FrameVisibilityCheckBox.Value;
+            app.drawModule();
+        end
+
+        % Button pushed function: CalculatePowerButton
+        function CalculatePowerButtonpushed(app, event)
+            calculatePower(app, app.ghi);
+        end
+
+        % Value changed function: NoofColumnsEditField_2
+        function NoofColumnsEditField_2changed(app, event)
+            value = app.NoofColumnsEditField_2.Value;
+            app.NoofColumns =  value;
+        end
+
+        % Value changed function: NoofrowsEditField_2
+        function NoofrowsEditField_2changed(app, event)
+            value = app.NoofrowsEditField_2.Value;
+            app.Noofrows =  value;
+        end
+
+        % Value changed function: GHIEditField_2
+        function GHIEditField_2changed(app, event)
+            value = app.GHIEditField_2.Value;
+            app.ghi =value;
+        end
+
+        % Value changed function: WidthEditField
+        function WidthEditFieldchanged(app, event)
+            value = app.WidthEditField.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: CellWidthEditField
+        function CellWidthEditFieldchanged(app, event)
+            app.CellWidth = app.CellWidthEditField.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: CellHeightEditField
+        function CellHeightEditFieldchanged(app, event)
+            app.CellHeight = app.CellHeightEditField.Value;
+            app.drawModule();
+        end
+
+        % Value changed function: CellWidthEditField_2
+        function CellWidthEditField_2changed(app, event)
+            app.CellWidth = app.CellWidthEditField_2.Value;
+            
+        end
+
+        % Value changed function: CellHeightEditField_2
+        function CellHeightEditField_2changed(app, event)
+            app.CellHeight = app.CellHeightEditField_2.Value;
+            
+        end
+
+        % Value changed function: EfficiencyEditField
+        function EfficiencyEditFieldchanged(app, event)
+            app.efficiency = app.EfficiencyEditField.Value;
+            
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Get the file path for locating images
+            pathToMLAPP = fileparts(mfilename('fullpath'));
+
+            % Create UIFigure and hide until all components are created
+            app.UIFigure = uifigure('Visible', 'off');
+            app.UIFigure.Position = [100 100 637 473];
+            app.UIFigure.Name = 'MATLAB App';
+
+            % Create TabGroup
+            app.TabGroup = uitabgroup(app.UIFigure);
+            app.TabGroup.Position = [1 1 637 473];
+
+            % Create SolarCellViewTab_2
+            app.SolarCellViewTab_2 = uitab(app.TabGroup);
+            app.SolarCellViewTab_2.Title = 'Solar Cell View';
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.SolarCellViewTab_2);
+            title(app.UIAxes, 'Title')
+            xlabel(app.UIAxes, 'X')
+            ylabel(app.UIAxes, 'Y')
+            zlabel(app.UIAxes, 'Z')
+            app.UIAxes.Position = [389 206 185 216];
+
+            % Create ParametersinSIunitsPanel
+            app.ParametersinSIunitsPanel = uipanel(app.SolarCellViewTab_2);
+            app.ParametersinSIunitsPanel.Title = 'Parameters in SI units';
+            app.ParametersinSIunitsPanel.Position = [8 0 296 449];
+
+            % Create HeightEditFieldLabel
+            app.HeightEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.HeightEditFieldLabel.HorizontalAlignment = 'right';
+            app.HeightEditFieldLabel.Position = [129 364 40 22];
+            app.HeightEditFieldLabel.Text = 'Height';
+
+            % Create HeightEditField
+            app.HeightEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.HeightEditField.ValueChangedFcn = createCallbackFcn(app, @HeightEditFieldchanged, true);
+            app.HeightEditField.Position = [184 364 100 22];
+
+            % Create WidthEditFieldLabel
+            app.WidthEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.WidthEditFieldLabel.HorizontalAlignment = 'right';
+            app.WidthEditFieldLabel.Position = [133 399 36 22];
+            app.WidthEditFieldLabel.Text = 'Width';
+
+            % Create WidthEditField
+            app.WidthEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.WidthEditField.ValueChangedFcn = createCallbackFcn(app, @WidthEditFieldchanged, true);
+            app.WidthEditField.Position = [184 399 100 22];
+
+            % Create NoofrowsEditFieldLabel
+            app.NoofrowsEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.NoofrowsEditFieldLabel.HorizontalAlignment = 'right';
+            app.NoofrowsEditFieldLabel.Position = [98 337 72 22];
+            app.NoofrowsEditFieldLabel.Text = 'No of rows   ';
+
+            % Create NoofrowsEditField
+            app.NoofrowsEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.NoofrowsEditField.ValueChangedFcn = createCallbackFcn(app, @NoofrowsEditFieldchanged, true);
+            app.NoofrowsEditField.Position = [185 337 100 22];
+
+            % Create NoofColumnsEditFieldLabel
+            app.NoofColumnsEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.NoofColumnsEditFieldLabel.HorizontalAlignment = 'right';
+            app.NoofColumnsEditFieldLabel.Position = [85 305 84 22];
+            app.NoofColumnsEditFieldLabel.Text = 'No of Columns';
+
+            % Create NoofColumnsEditField
+            app.NoofColumnsEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.NoofColumnsEditField.ValueChangedFcn = createCallbackFcn(app, @NoofColumnsEditFieldchanged, true);
+            app.NoofColumnsEditField.Position = [184 305 100 22];
+
+            % Create GlassThicknessFrontEditFieldLabel
+            app.GlassThicknessFrontEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.GlassThicknessFrontEditFieldLabel.HorizontalAlignment = 'right';
+            app.GlassThicknessFrontEditFieldLabel.Position = [43 269 127 22];
+            app.GlassThicknessFrontEditFieldLabel.Text = 'Glass Thickness Front ';
+
+            % Create GlassThicknessFrontEditField
+            app.GlassThicknessFrontEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.GlassThicknessFrontEditField.ValueChangedFcn = createCallbackFcn(app, @GlassThicknessFrontEditFieldchanged, true);
+            app.GlassThicknessFrontEditField.Position = [185 269 100 22];
+
+            % Create EncapsulantThicknessRearEditFieldLabel
+            app.EncapsulantThicknessRearEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.EncapsulantThicknessRearEditFieldLabel.HorizontalAlignment = 'right';
+            app.EncapsulantThicknessRearEditFieldLabel.Position = [12 203 158 22];
+            app.EncapsulantThicknessRearEditFieldLabel.Text = 'Encapsulant Thickness Rear';
+
+            % Create EncapsulantThicknessRearEditField
+            app.EncapsulantThicknessRearEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.EncapsulantThicknessRearEditField.ValueChangedFcn = createCallbackFcn(app, @EncapsulantThicknessRearEditFieldchanged, true);
+            app.EncapsulantThicknessRearEditField.Position = [185 203 100 22];
+
+            % Create EncapsulantThicknessFrontEditFieldLabel
+            app.EncapsulantThicknessFrontEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.EncapsulantThicknessFrontEditFieldLabel.HorizontalAlignment = 'right';
+            app.EncapsulantThicknessFrontEditFieldLabel.Position = [9 168 160 22];
+            app.EncapsulantThicknessFrontEditFieldLabel.Text = 'Encapsulant Thickness Front';
+
+            % Create EncapsulantThicknessFrontEditField
+            app.EncapsulantThicknessFrontEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.EncapsulantThicknessFrontEditField.ValueChangedFcn = createCallbackFcn(app, @EncapsulantThicknessFrontEditFieldchanged, true);
+            app.EncapsulantThicknessFrontEditField.Position = [184 168 100 22];
+
+            % Create GlassThicknessRearEditFieldLabel
+            app.GlassThicknessRearEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.GlassThicknessRearEditFieldLabel.HorizontalAlignment = 'right';
+            app.GlassThicknessRearEditFieldLabel.Position = [45 237 125 22];
+            app.GlassThicknessRearEditFieldLabel.Text = 'Glass Thickness Rear ';
+
+            % Create GlassThicknessRearEditField
+            app.GlassThicknessRearEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.GlassThicknessRearEditField.ValueChangedFcn = createCallbackFcn(app, @GlassThicknessRearEditFieldchanged, true);
+            app.GlassThicknessRearEditField.Position = [185 237 100 22];
+
+            % Create CellSpacingEditFieldLabel
+            app.CellSpacingEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.CellSpacingEditFieldLabel.HorizontalAlignment = 'right';
+            app.CellSpacingEditFieldLabel.Position = [98 136 72 22];
+            app.CellSpacingEditFieldLabel.Text = 'Cell Spacing';
+
+            % Create CellSpacingEditField
+            app.CellSpacingEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.CellSpacingEditField.ValueChangedFcn = createCallbackFcn(app, @CellSpacingEditFieldchanged, true);
+            app.CellSpacingEditField.Position = [185 136 100 22];
+
+            % Create FrameThicknessEditFieldLabel
+            app.FrameThicknessEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.FrameThicknessEditFieldLabel.HorizontalAlignment = 'right';
+            app.FrameThicknessEditFieldLabel.Position = [73 103 97 22];
+            app.FrameThicknessEditFieldLabel.Text = 'Frame Thickness';
+
+            % Create FrameThicknessEditField
+            app.FrameThicknessEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.FrameThicknessEditField.ValueChangedFcn = createCallbackFcn(app, @FrameThicknessEditFieldchanged, true);
+            app.FrameThicknessEditField.Position = [185 103 100 22];
+
+            % Create GHIEditFieldLabel
+            app.GHIEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.GHIEditFieldLabel.HorizontalAlignment = 'right';
+            app.GHIEditFieldLabel.Position = [144 68 26 22];
+            app.GHIEditFieldLabel.Text = 'GHI';
+
+            % Create GHIEditField
+            app.GHIEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.GHIEditField.ValueChangedFcn = createCallbackFcn(app, @GHIEditFieldchanged, true);
+            app.GHIEditField.Position = [185 68 100 22];
+
+            % Create CellHeightEditFieldLabel
+            app.CellHeightEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.CellHeightEditFieldLabel.HorizontalAlignment = 'right';
+            app.CellHeightEditFieldLabel.Position = [105 37 64 22];
+            app.CellHeightEditFieldLabel.Text = 'Cell Height';
+
+            % Create CellHeightEditField
+            app.CellHeightEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.CellHeightEditField.ValueChangedFcn = createCallbackFcn(app, @CellHeightEditFieldchanged, true);
+            app.CellHeightEditField.Position = [184 37 100 22];
+
+            % Create CellWidthEditFieldLabel
+            app.CellWidthEditFieldLabel = uilabel(app.ParametersinSIunitsPanel);
+            app.CellWidthEditFieldLabel.HorizontalAlignment = 'right';
+            app.CellWidthEditFieldLabel.Position = [109 2 60 22];
+            app.CellWidthEditFieldLabel.Text = 'Cell Width';
+
+            % Create CellWidthEditField
+            app.CellWidthEditField = uieditfield(app.ParametersinSIunitsPanel, 'numeric');
+            app.CellWidthEditField.ValueChangedFcn = createCallbackFcn(app, @CellWidthEditFieldchanged, true);
+            app.CellWidthEditField.Position = [184 2 100 22];
+
+            % Create Image
+            app.Image = uiimage(app.SolarCellViewTab_2);
+            app.Image.Position = [397 51 208 188];
+            app.Image.ImageSource = fullfile(pathToMLAPP, 'Irradiancelegend.png');
+
+            % Create ViewSelectionDropDownLabel
+            app.ViewSelectionDropDownLabel = uilabel(app.SolarCellViewTab_2);
+            app.ViewSelectionDropDownLabel.HorizontalAlignment = 'right';
+            app.ViewSelectionDropDownLabel.Position = [397 83 84 22];
+            app.ViewSelectionDropDownLabel.Text = 'View Selection';
+
+            % Create ViewSelectionDropDown
+            app.ViewSelectionDropDown = uidropdown(app.SolarCellViewTab_2);
+            app.ViewSelectionDropDown.Items = {'Top', 'Side', 'Isometric', 'Bottom'};
+            app.ViewSelectionDropDown.ValueChangedFcn = createCallbackFcn(app, @ViewSelectionDropDownchanged, true);
+            app.ViewSelectionDropDown.Position = [488 83 100 22];
+            app.ViewSelectionDropDown.Value = 'Top';
+
+            % Create SaveButton
+            app.SaveButton = uibutton(app.SolarCellViewTab_2, 'push');
+            app.SaveButton.ButtonPushedFcn = createCallbackFcn(app, @save, true);
+            app.SaveButton.Position = [509 15 100 22];
+            app.SaveButton.Text = 'Save';
+
+            % Create LoadButton
+            app.LoadButton = uibutton(app.SolarCellViewTab_2, 'push');
+            app.LoadButton.ButtonPushedFcn = createCallbackFcn(app, @load, true);
+            app.LoadButton.Position = [397 15 100 22];
+            app.LoadButton.Text = 'Load';
+
+            % Create FrameVisibilityCheckBox
+            app.FrameVisibilityCheckBox = uicheckbox(app.SolarCellViewTab_2);
+            app.FrameVisibilityCheckBox.ValueChangedFcn = createCallbackFcn(app, @FrameVisibilityCheckBoxchanged, true);
+            app.FrameVisibilityCheckBox.Text = 'Frame Visibility';
+            app.FrameVisibilityCheckBox.Position = [397 51 103 22];
+
+            % Create JunctionBoxCheckBox
+            app.JunctionBoxCheckBox = uicheckbox(app.SolarCellViewTab_2);
+            app.JunctionBoxCheckBox.ValueChangedFcn = createCallbackFcn(app, @JunctionBoxCheckBoxchanged, true);
+            app.JunctionBoxCheckBox.Text = 'Junction Box';
+            app.JunctionBoxCheckBox.Position = [519 51 90 22];
+
+            % Create PowerCalculationTab
+            app.PowerCalculationTab = uitab(app.TabGroup);
+            app.PowerCalculationTab.Title = 'Power Calculation';
+
+            % Create ParametersPanel_2
+            app.ParametersPanel_2 = uipanel(app.PowerCalculationTab);
+            app.ParametersPanel_2.Title = 'Parameters';
+            app.ParametersPanel_2.Position = [25 210 267 226];
+
+            % Create NoofrowsEditField_2Label
+            app.NoofrowsEditField_2Label = uilabel(app.ParametersPanel_2);
+            app.NoofrowsEditField_2Label.HorizontalAlignment = 'right';
+            app.NoofrowsEditField_2Label.Position = [52 176 72 22];
+            app.NoofrowsEditField_2Label.Text = 'No of rows   ';
+
+            % Create NoofrowsEditField_2
+            app.NoofrowsEditField_2 = uieditfield(app.ParametersPanel_2, 'numeric');
+            app.NoofrowsEditField_2.ValueChangedFcn = createCallbackFcn(app, @NoofrowsEditField_2changed, true);
+            app.NoofrowsEditField_2.Position = [139 176 100 22];
+
+            % Create NoofColumnsEditField_2Label
+            app.NoofColumnsEditField_2Label = uilabel(app.ParametersPanel_2);
+            app.NoofColumnsEditField_2Label.HorizontalAlignment = 'right';
+            app.NoofColumnsEditField_2Label.Position = [40 147 84 22];
+            app.NoofColumnsEditField_2Label.Text = 'No of Columns';
+
+            % Create NoofColumnsEditField_2
+            app.NoofColumnsEditField_2 = uieditfield(app.ParametersPanel_2, 'numeric');
+            app.NoofColumnsEditField_2.ValueChangedFcn = createCallbackFcn(app, @NoofColumnsEditField_2changed, true);
+            app.NoofColumnsEditField_2.Position = [139 147 100 22];
+
+            % Create GHIEditField_2Label
+            app.GHIEditField_2Label = uilabel(app.ParametersPanel_2);
+            app.GHIEditField_2Label.HorizontalAlignment = 'right';
+            app.GHIEditField_2Label.Position = [97 117 26 22];
+            app.GHIEditField_2Label.Text = 'GHI';
+
+            % Create GHIEditField_2
+            app.GHIEditField_2 = uieditfield(app.ParametersPanel_2, 'numeric');
+            app.GHIEditField_2.ValueChangedFcn = createCallbackFcn(app, @GHIEditField_2changed, true);
+            app.GHIEditField_2.Position = [138 117 100 22];
+
+            % Create EfficiencyEditFieldLabel
+            app.EfficiencyEditFieldLabel = uilabel(app.ParametersPanel_2);
+            app.EfficiencyEditFieldLabel.HorizontalAlignment = 'right';
+            app.EfficiencyEditFieldLabel.Position = [70 86 56 22];
+            app.EfficiencyEditFieldLabel.Text = 'Efficiency';
+
+            % Create EfficiencyEditField
+            app.EfficiencyEditField = uieditfield(app.ParametersPanel_2, 'numeric');
+            app.EfficiencyEditField.ValueChangedFcn = createCallbackFcn(app, @EfficiencyEditFieldchanged, true);
+            app.EfficiencyEditField.Position = [139 87 100 22];
+
+            % Create CellHeightEditField_2Label
+            app.CellHeightEditField_2Label = uilabel(app.ParametersPanel_2);
+            app.CellHeightEditField_2Label.HorizontalAlignment = 'right';
+            app.CellHeightEditField_2Label.Position = [60 50 64 22];
+            app.CellHeightEditField_2Label.Text = 'Cell Height';
+
+            % Create CellHeightEditField_2
+            app.CellHeightEditField_2 = uieditfield(app.ParametersPanel_2, 'numeric');
+            app.CellHeightEditField_2.ValueChangedFcn = createCallbackFcn(app, @CellHeightEditField_2changed, true);
+            app.CellHeightEditField_2.Position = [139 50 100 22];
+
+            % Create CellWidthEditField_2Label
+            app.CellWidthEditField_2Label = uilabel(app.ParametersPanel_2);
+            app.CellWidthEditField_2Label.HorizontalAlignment = 'right';
+            app.CellWidthEditField_2Label.Position = [64 16 60 22];
+            app.CellWidthEditField_2Label.Text = 'Cell Width';
+
+            % Create CellWidthEditField_2
+            app.CellWidthEditField_2 = uieditfield(app.ParametersPanel_2, 'numeric');
+            app.CellWidthEditField_2.ValueChangedFcn = createCallbackFcn(app, @CellWidthEditField_2changed, true);
+            app.CellWidthEditField_2.Position = [139 16 100 22];
+
+            % Create EditField
+            app.EditField = uieditfield(app.PowerCalculationTab, 'numeric');
+            app.EditField.Position = [173 169 100 22];
+
+            % Create Image2
+            app.Image2 = uiimage(app.PowerCalculationTab);
+            app.Image2.Position = [366 210 208 226];
+            app.Image2.ImageSource = fullfile(pathToMLAPP, 'power.png');
+
+            % Create CalculatePowerButton
+            app.CalculatePowerButton = uibutton(app.PowerCalculationTab, 'push');
+            app.CalculatePowerButton.ButtonPushedFcn = createCallbackFcn(app, @CalculatePowerButtonpushed, true);
+            app.CalculatePowerButton.Position = [46 169 102 22];
+            app.CalculatePowerButton.Text = 'Calculate Power';
+
+            % Show the figure after all components are created
+            app.UIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = Project
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.UIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @Start)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.UIFigure)
+        end
+    end
