@@ -11,19 +11,19 @@ This MATLAB App provides an interactive 3D visualization of a photovoltaic (PV) 
 
 ## Features
 
-- 📐 **Fully Configurable Geometry**  
+-  **Fully Configurable Geometry**  
   Input dimensions for module width, height, glass/encapsulant thicknesses, frame, cell size, and layout (rows × columns).
 
-- 🧱 **Layered 3D Visualization**  
+-  **Layered 3D Visualization**  
   Renders glass layers, encapsulant layers, photovoltaic cells, E-shaped aluminum frame, and junction box using `patch` graphics.
 
-- 🎥 **Multiple Camera Views**  
+-  **Multiple Camera Views**  
   Choose from Top, Bottom, Front, Side, and Isometric views via dropdown.
 
-- 🔆 **Irradiance-Based Cell Coloring**  
+-  **Irradiance-Based Cell Coloring**  
   Cells change color based on user-defined irradiance (W/m²), visualizing solar energy input using a red-to-blue gradient.
 
-- ⚡ **Power Estimation**  
+-  **Power Estimation**  
   Calculates estimated power output based on active cell area and efficiency:
 Power = GHI × CellArea × Efficiency
 
@@ -31,10 +31,10 @@ yaml
 Copy
 Edit
 
-- 💾 **Save/Load Configuration**  
+-  **Save/Load Configuration**  
 Save and reload custom module setups including all geometry, efficiency, and visual settings.
 
-- 🔧 **Optional Components**  
+-  **Optional Components**  
 Toggle frame visibility and render junction box with stubbed cable lines.
 
 ---
